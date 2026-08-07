@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<!--
+  Pixel Flag Studio
+  A self-contained HTML demo for building an animated, pixel-art waving flag.
+  This page contains inline CSS for styling and inline JavaScript for rendering
+  an interactive flag studio with presets, controls, and animation.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pixel Flag Studio</title>
+
+<style>
+  /* Page styles are scoped in one block for this demo. */
+  :root{
+    --bg:#10131c;
+    --panel:#1a1f2e;
+    --panel-2:#232a3d;
+    --line:#333c54;
+    --ink:#eef1f8;
+    --ink-dim:#8b93ac;
+    --gold:#ffd23f;
+    --pole:#6b5138;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(circle at 20% 10%, #1c2338 0%, transparent 55%),
+      radial-gradient(circle at 85% 90%, #1a2436 0%, transparent 50%),
+      var(--bg);
+    color:var(--ink);
+    font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Courier New', monospace;
+    padding:28px 18px 40px;
+  }
+  .wrap{max-width:920px;margin:0 auto;}
+
+  h1{
+    font-size:22px;
+    letter-spacing:3px;
+    margin:0 0 4px;
+    text-transform:uppercase;
+    text-shadow: 2px 0 0 rgba(255,210,63,0.35);
+  }
+  .sub{
+    color:var(--ink-dim);
+    font-size:12px;
+    letter-spacing:1px;
+    margin:0 0 22px;
+  }
+
+  .stage{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:4px;
+    padding:22px;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
+  }
+  canvas{image-rendering:pixelated; display:block;}
+  /* The canvas is the main render target for the animated flag. */
+  /* TODO: Consider supporting high-DPI screens by resizing canvas using devicePixelRatio. */
+
+  .controls{
+    margin-top:16px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:4px;
+    padding:18px 20px;
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap:16px 24px;
+  }
+  @media (max-width:600px){ .controls{grid-template-columns:1fr;} }
+
+  .group label.title{
+    display:block;
+    font-size:10px;
+    letter-spacing:2px;
+    color:var(--ink-dim);
+    text-transform:uppercase;
+    margin-bottom:8px;
+  }
+  .row{display:flex; flex-wrap:wrap; gap:6px;}
+  .btn{
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--ink);
+    font-family:inherit;
+    font-size:11px;
+    letter-spacing:0.5px;
+    padding:7px 10px;
+    border-radius:3px;
+    cursor:pointer;
+    transition:transform .08s ease, background .15s ease, border-color .15s ease;
+  }
+  .btn:hover{border-color:#4a5578;}
+  .btn:active{transform:translateY(1px);}
+  .btn.active{
+    background: var(--gold);
+    color:#1a1300;
+    border-color:var(--gold);
+    font-weight:600;
+  }
+  .swatch{
+    width:20px;height:20px;border-radius:3px;
+    display:inline-block; vertical-align:middle; margin-right:6px;
+    border:1px solid rgba(255,255,255,0.15);
+  }
+
+  .slider-row{display:flex; align-items:center; gap:10px;}
+  input[type=range]{flex:1; accent-color:var(--gold);}
+  .val{font-size:11px; color:var(--ink-dim); width:34px; text-align:right;}
+
+  .playbtn{
+    grid-column:1/-1;
+    display:flex; justify-content:center;
+  }
+  .playbtn .btn{
+    padding:8px 22px;
+    font-size:12px;
+  }
+
+  .gallery-head{
+    margin:34px 0 12px;
+    display:flex;
+    align-items:baseline;
+    gap:10px;
+  }
+  .gallery-head h2{
+    font-size:13px;
+    letter-spacing:2px;
+    text-transform:uppercase;
+    margin:0;
+    color:var(--ink);
+  }
+  .gallery-head span{
+    font-size:11px;
+    color:var(--ink-dim);
+  }
+
+  .gallery{
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap:14px;
+  }
+  @media (max-width:640px){ .gallery{grid-template-columns: repeat(2, 1fr);} }
+
+  .card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:4px;
+    padding:14px 10px 10px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:8px;
+  }
+  .card .name{
+    font-size:10px;
+    letter-spacing:1.5px;
+    color:var(--ink-dim);
+    text-transform:uppercase;
+  }
+
+  footer{
+    margin-top:28px;
+    text-align:center;
+    font-size:10px;
+    color:var(--ink-dim);
+    letter-spacing:1px;
+  }
+</style>
+</head>
+<body>
+<!-- app wrapper: central content area with padding and dark theme -->
+<div class="wrap">
+  <h1>Pixel Flag Studio</h1>
+  <p class="sub">// build a waving pixel-art flag, then browse the set below</p>
+
+  <div class="stage">
+    <!-- Main display area: the canvas draws the animated flag based on current studio settings. -->
+    <!-- TODO: Add accessible canvas fallback content or ARIA role for screen readers. -->
+    <canvas id="mainCanvas" width="560" height="360"></canvas>
+  </div>
+
+  <div class="controls">
+    <!-- Control panel: pattern, palette, pixel size, wind, speed, and play/pause. -->
+    <!-- TODO: Consider wrapping control groups with <fieldset> and <legend> or ARIA grouping for better accessibility. -->
+    <div class="group">
+      <label class="title">Pattern</label>
+      <div class="row" id="patternRow"></div>
+    </div>
+
+    <div class="group">
+      <label class="title">Palette</label>
+      <div class="row" id="paletteRow"></div>
+    </div>
+
+    <div class="group">
+      <label class="title">Pixel Size</label>
+      <div class="row" id="chunkRow"></div>
+    </div>
+
+    <div class="group">
+      <label class="title">Wind</label>
+      <div class="slider-row">
+        <input type="range" id="windSlider" min="1" max="10" value="5">
+        <span class="val" id="windVal">5</span>
+      </div>
+      <label class="title" style="margin-top:12px;">Speed</label>
+      <div class="slider-row">
+        <input type="range" id="speedSlider" min="1" max="10" value="5">
+        <span class="val" id="speedVal">5</span>
+      </div>
+    </div>
+
+    <div class="playbtn">
+      <button class="btn" id="playPause">⏸ Pause</button>
+    </div>
+  </div>
+
+  <div class="gallery-head">
+    <h2>The Set</h2>
+    <span>six presets, animating independently</span>
+  </div>
+    <!-- TODO: Make gallery preset cards keyboard-accessible and support focus/selection state. -->
+
+<script>
+/* ---------- palettes & patterns ---------- */
+const PALETTES = {
+  Classic: ['#c8102e','#ffffff','#00247d'],
+  Sunset:  ['#ff6b35','#f7c548','#2e1a47'],
+  Forest:  ['#40916c','#d8f3dc','#1b4332'],
+  Neon:    ['#ff00e5','#00fff9','#151024'],
+  Desert:  ['#e07a5f','#f2cc8f','#3d405b'],
+  Mono:    ['#f2f2f2','#9aa0ad','#17191f']
+};
+
+const PATTERNS = {
+  // Pattern generators return a 2D grid of colors for the flag.
+  // Each function receives the grid dimensions and a palette array.
+  // The resulting grid is used by the renderer to draw pixels.
+  // Bars uses vertical color bands across the flag.
+  Bars(cols, rows, p){
+    const n = p.length;
+    const g = [];
+    for(let y=0;y<rows;y++){
+      const row=[];
+      for(let x=0;x<cols;x++){
+        row.push(p[Math.floor(x/cols*n) % n]);
+      }
+      g.push(row);
+    }
+    return g;
+  },
+  // Stripes uses horizontal bands by row index.
+  Stripes(cols, rows, p){
+    const n = p.length;
+    const g = [];
+    for(let y=0;y<rows;y++){
+      const c = p[Math.floor(y/rows*n) % n];
+      g.push(new Array(cols).fill(c));
+    }
+    return g;
+  },
+  // Cross creates a simple central cross shape.
+  Cross(cols, rows, p){
+    const barX = Math.round(cols*0.32), barW = Math.max(1,Math.round(cols*0.16));
+    const barY = Math.round(rows*0.5 - rows*0.14), barH = Math.max(1,Math.round(rows*0.28));
+    const g=[];
+    for(let y=0;y<rows;y++){
+      const row=[];
+      for(let x=0;x<cols;x++){
+        const inV = x>=barX && x<barX+barW;
+        const inH = y>=barY && y<barY+barH;
+        row.push((inV||inH) ? p[1] : p[0]);
+      }
+      g.push(row);
+    }
+    return g;
+  },
+  // Diamond builds a centered diamond shape using Manhattan distance.
+  Diamond(cols, rows, p){
+    const cx=cols/2, cy=rows/2;
+    const g=[];
+    for(let y=0;y<rows;y++){
+      const row=[];
+      for(let x=0;x<cols;x++){
+        const d = Math.abs(x-cx)/(cols/2) + Math.abs(y-cy)/(rows/2);
+        row.push(d<=0.62 ? p[1] : p[0]);
+      }
+      g.push(row);
+    }
+    return g;
+  },
+  // Sunburst alternates wedge colors from the left edge.
+  Sunburst(cols, rows, p){
+    const originX=0, originY=rows/2;
+    const sectors=9;
+    const g=[];
+    for(let y=0;y<rows;y++){
+      const row=[];
+      for(let x=0;x<cols;x++){
+        const ang = Math.atan2(y-originY, x-originX);
+        const idx = Math.floor(((ang+Math.PI/2)/Math.PI)*sectors);
+        row.push(idx%2===0 ? p[0] : p[1]);
+      }
+      g.push(row);
+    }
+    return g;
+  },
+  // Checker creates a checkerboard with a tinted border.
+  Checker(cols, rows, p){
+    const g=[];
+    const border = Math.max(1, Math.round(Math.min(cols,rows)*0.08));
+    for(let y=0;y<rows;y++){
+      const row=[];
+      for(let x=0;x<cols;x++){
+        if(x<border||y<border||x>=cols-border||y>=rows-border){
+          row.push(p[2] || p[0]);
+        } else {
+          row.push(((x+y)%2===0) ? p[0] : p[1]);
+        }
+      }
+      g.push(row);
+    }
+    return g;
+  }
+};
+
+const PATTERN_NAMES = Object.keys(PATTERNS);
+const PALETTE_NAMES = Object.keys(PALETTES);
+const CHUNK_OPTIONS = [
+  {label:'Fine', cols:36, rows:24},
+  {label:'Med', cols:22, rows:15},
+  {label:'Chunky', cols:13, rows:9}
+];
+
+// render the animated flag on a canvas using a grid pattern and wind animation.
+/* ---------- flag renderer ---------- */
+class FlagRenderer{
+  constructor(canvas, opts){
+    // store canvas and rendering state for each flag instance.
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.cols = opts.cols;
+    this.rows = opts.rows;
+    this.pattern = opts.pattern;
+    this.paletteName = opts.paletteName;
+    this.phase = opts.phase || 0;
+    this.wind = opts.wind ?? 5;
+    this.speed = opts.speed ?? 5;
+    this.playing = true;
+    this.t = 0;
+    this.poleW = Math.max(6, canvas.width*0.035);
+    this.marginTop = canvas.height*0.08;
+    this.marginBottom = canvas.height*0.10;
+    this._buildGrid();
+  }
+  setPattern(name){ this.pattern = name; this._buildGrid(); }
+  setPalette(name){ this.paletteName = name; this._buildGrid(); }
+  setChunk(cols, rows){ this.cols = cols; this.rows = rows; this._buildGrid(); }
+  _buildGrid(){
+    // regenerate the pixel data whenever pattern, palette, or resolution changes.
+    const p = PALETTES[this.paletteName];
+    // TODO: Guard against invalid palette or pattern names and provide a fallback.
+    this.grid = PATTERNS[this.pattern](this.cols, this.rows, p);
+  }
+  step(dt){
+    // advance animation time if this flag is playing.
+    if(this.playing) this.t += dt * (0.4 + this.speed*0.18);
+    this._draw();
+  }
+  _draw(){
+    // clear the canvas and draw the pole plus distorted grid cells.
+    const ctx = this.ctx;
+    const W = this.canvas.width, H = this.canvas.height;
+    ctx.clearRect(0,0,W,H);
+
+    const flagW = W - this.poleW - 10;
+    const flagH = H - this.marginTop - this.marginBottom;
+    const cellW = flagW/this.cols, cellH = flagH/this.rows;
+    const originX = this.poleW + 6, originY = this.marginTop;
+
+    const amp = (this.wind/10) * (flagH*0.22);
+    const colFreq = 0.55;
+
+    // precompute column displacement
+    const dispY = new Array(this.cols+1);
+    const dispX = new Array(this.cols+1);
+    for(let i=0;i<=this.cols;i++){
+      const f = i/this.cols;
+      const ph = this.t - i*colFreq + this.phase;
+      dispY[i] = amp * f * Math.sin(ph);
+      dispX[i] = amp * 0.22 * f * Math.sin(ph + 1.1);
+    }
+
+    // pole
+    ctx.fillStyle = '#6b5138';
+    ctx.fillRect(4, originY - 14, this.poleW, flagH + 26);
+    ctx.fillStyle = '#ffd23f';
+    ctx.beginPath();
+    ctx.arc(4 + this.poleW/2, originY - 18, this.poleW*0.6, 0, Math.PI*2);
+    ctx.fill();
+
+    // quads
+    for(let i=0;i<this.cols;i++){
+      const x0 = originX + i*cellW + dispX[i];
+      const x1 = originX + (i+1)*cellW + dispX[i+1];
+      const yTop0 = originY + dispY[i];
+      const yTop1 = originY + dispY[i+1];
+      for(let j=0;j<this.rows;j++){
+        const y0 = yTop0 + j*cellH;
+        const y1 = yTop0 + (j+1)*cellH;
+        const y0b = yTop1 + j*cellH;
+        const y1b = yTop1 + (j+1)*cellH;
+        const color = this.grid[j][i];
+        ctx.fillStyle = color;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y0b);
+        ctx.lineTo(x1, y1b);
+        ctx.lineTo(x0, y1);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+/* ---------- main studio ---------- */
+const mainCanvas = document.getElementById('mainCanvas');
+const state = { pattern:'Cross', palette:'Classic', chunkIdx:1, wind:5, speed:5 };
+const mainFlag = new FlagRenderer(mainCanvas, {
+  cols:CHUNK_OPTIONS[1].cols, rows:CHUNK_OPTIONS[1].rows,
+  pattern:state.pattern, paletteName:state.palette,
+  wind:state.wind, speed:state.speed
+});
+
+// helper to fill a control row of buttons and mark the active selection.
+// This function recreates the row when state changes so the active button is highlighted.
+function buildRow(container, items, isActive, onClick){
+  container.innerHTML='';
+  items.forEach(item=>{
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn' + (isActive(item) ? ' active' : '');
+    b.innerHTML = item.html ?? item.label;
+    // TODO: Use textContent for plain labels and preserve HTML only when needed.
+    b.onclick = ()=>{ onClick(item); refreshAll(); };
+    container.appendChild(b);
+  });
+}
+
+function refreshAll(){
+  // rebuild the pattern, palette, and chunk selection controls.
+  buildRow(document.getElementById('patternRow'), PATTERN_NAMES.map(n=>({label:n,key:n})),
+    it=>it.key===state.pattern, it=>{ state.pattern=it.key; mainFlag.setPattern(it.key); });
+
+  buildRow(document.getElementById('paletteRow'), PALETTE_NAMES.map(n=>({
+      key:n,
+      html:`<span class="swatch" style="background:${PALETTES[n][0]}"></span>${n}`
+    })),
+    it=>it.key===state.palette, it=>{ state.palette=it.key; mainFlag.setPalette(it.key); });
+
+  buildRow(document.getElementById('chunkRow'), CHUNK_OPTIONS.map((c,idx)=>({label:c.label, idx})),
+    it=>it.idx===state.chunkIdx, it=>{
+      state.chunkIdx = it.idx;
+      const c = CHUNK_OPTIONS[it.idx];
+      mainFlag.setChunk(c.cols, c.rows);
+    });
+}
+refreshAll();
+
+const windSlider = document.getElementById('windSlider');
+const speedSlider = document.getElementById('speedSlider');
+windSlider.oninput = ()=>{ mainFlag.wind = +windSlider.value; document.getElementById('windVal').textContent = windSlider.value; };
+speedSlider.oninput = ()=>{ mainFlag.speed = +speedSlider.value; document.getElementById('speedVal').textContent = speedSlider.value; };
+
+const playBtn = document.getElementById('playPause');
+playBtn.onclick = ()=>{
+  mainFlag.playing = !mainFlag.playing;
+  playBtn.textContent = mainFlag.playing ? '⏸ Pause' : '▶ Play';
+  // Play/pause toggles the main canvas animation only.
+  // TODO: Add aria-pressed or accessible label updates for the toggle button.
+};
+
+// gallery preview cards: independent animated flag instances with click-to-load behavior.
+/* ---------- gallery set ---------- */
+const PRESETS = [
+  {pattern:'Cross', palette:'Classic', phase:0},
+  {pattern:'Bars', palette:'Sunset', phase:1.3},
+  {pattern:'Diamond', palette:'Forest', phase:2.1},
+  {pattern:'Sunburst', palette:'Neon', phase:0.7},
+  {pattern:'Checker', palette:'Desert', phase:3.0},
+  {pattern:'Stripes', palette:'Mono', phase:1.8},
+];
+
+const galleryEl = document.getElementById('gallery');
+const galleryFlags = [];
+
+PRESETS.forEach(preset=>{
+  // Build a small preview card with its own animated canvas.
+  // Clicking the preset loads its pattern and palette into the main studio.
+  const card = document.createElement('div');
+  card.className = 'card';
+  const canvas = document.createElement('canvas');
+  canvas.width = 220; canvas.height = 150;
+  const name = document.createElement('div');
+  name.className = 'name';
+  name.textContent = `${preset.pattern} · ${preset.palette}`;
+  name.style.cursor = 'pointer';
+  // TODO: Use a button or link element for better keyboard access instead of a clickable div.
+  name.onclick = ()=>{
+    state.pattern = preset.pattern;
+    state.palette = preset.palette;
+    mainFlag.setPattern(preset.pattern);
+    mainFlag.setPalette(preset.palette);
+    refreshAll();
+    mainCanvas.scrollIntoView({behavior:'smooth', block:'center'});
+  };
+  card.appendChild(canvas);
+  card.appendChild(name);
+  galleryEl.appendChild(card);
+
+  const flag = new FlagRenderer(canvas, {
+    cols:20, rows:13, pattern:preset.pattern, paletteName:preset.palette,
+    phase:preset.phase, wind:5, speed:5
+  });
+  galleryFlags.push(flag);
+});
+
+/* ---------- animation loop ---------- */
+// The animation loop updates all instantiated flags on every frame.
+// A fixed maximum dt prevents large time steps from jumping too far after tab switches.
+let lastT = performance.now();
+function loop(now){
+  const dt = Math.min(0.05, (now-lastT)/1000);
+  lastT = now;
+  mainFlag.step(dt);
+  galleryFlags.forEach(f=>f.step(dt));
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
