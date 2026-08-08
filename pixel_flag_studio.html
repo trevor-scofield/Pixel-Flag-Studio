@@ -113,6 +113,12 @@
   .slider-row{display:flex; align-items:center; gap:10px;}
   input[type=range]{flex:1; accent-color:var(--gold);}
   .val{font-size:11px; color:var(--ink-dim); width:34px; text-align:right;}
+  .export-group{grid-column:1/-1;}
+  .export-group .lbl{
+    font-size:11px; color:var(--ink-dim);
+    width:64px; flex:none;
+  }
+  .hint{font-size:10px; color:var(--ink-dim); margin:10px 0 0; line-height:1.5;}
 
   .playbtn{
     grid-column:1/-1;
@@ -219,6 +225,34 @@
 
     <div class="playbtn">
       <button class="btn" id="playPause">⏸ Pause</button>
+    </div>
+
+    <div class="group export-group">
+      <label class="title">Export</label>
+      <div class="row" id="formatRow"></div>
+      <div class="slider-row" style="margin-top:12px;">
+        <span class="lbl">Frames</span>
+        <input type="range" id="framesSlider" min="8" max="48" value="24">
+        <span class="val" id="framesVal">24</span>
+      </div>
+      <div class="slider-row" style="margin-top:8px;">
+        <span class="lbl">FPS</span>
+        <input type="range" id="fpsSlider" min="5" max="30" value="12">
+        <span class="val" id="fpsVal">12</span>
+      </div>
+      <div class="row" style="margin-top:12px;">
+        <span class="lbl" style="align-self:center;">Size</span>
+        <div id="scaleRow"></div>
+      </div>
+      <div class="row" style="margin-top:12px;">
+        <button class="btn" id="exportBtn">⬇ Export</button>
+        <span class="val" id="exportStatus" style="width:auto;text-align:left;align-self:center;"></span>
+      </div>
+      <p class="hint">
+        Exports the current pattern, palette, pixel size and wind as a seamless loop.
+        Spritesheet &amp; Frames ZIP come with a ready-to-use Godot 4 SpriteFrames file.
+        GIF uses a transparent background.
+      </p>
     </div>
   </div>
 
@@ -539,6 +573,392 @@ PRESETS.forEach(preset=>{
   });
   galleryFlags.push(flag);
 });
+
+/* ---------- export ---------- */
+const EXPORT_FORMATS = [
+  {label:'Spritesheet', key:'sheet'},
+  {label:'Frames ZIP', key:'zip'},
+  {label:'GIF', key:'gif'}
+];
+const EXPORT_SCALES = [{label:'1x', v:1},{label:'2x', v:2},{label:'3x', v:3}];
+const exportState = {format:'sheet', scale:2};
+
+buildRow(document.getElementById('formatRow'),
+  EXPORT_FORMATS.map(f=>({label:f.label, key:f.key})),
+  it=>it.key===exportState.format,
+  it=>{ exportState.format = it.key; });
+
+buildRow(document.getElementById('scaleRow'),
+  EXPORT_SCALES.map(s=>({label:s.label, v:s.v})),
+  it=>it.v===exportState.scale,
+  it=>{ exportState.scale = it.v; });
+
+const framesSlider = document.getElementById('framesSlider');
+const fpsSlider = document.getElementById('fpsSlider');
+framesSlider.oninput = ()=>{ document.getElementById('framesVal').textContent = framesSlider.value; };
+fpsSlider.oninput = ()=>{ document.getElementById('fpsVal').textContent = fpsSlider.value; };
+
+// Render N frames of the current studio flag as ImageData at (W x H).
+// The t values span exactly one 2*pi cycle so the export loops seamlessly.
+function renderFrames(W, H, N){
+  const off = document.createElement('canvas');
+  off.width = W; off.height = H;
+  const f = new FlagRenderer(off, {
+    cols: mainFlag.cols, rows: mainFlag.rows,
+    pattern: state.pattern, paletteName: state.palette,
+    wind: state.wind, speed: state.speed, playing: false
+  });
+  const ctx = off.getContext('2d', {willReadFrequently:true});
+  const frames = [];
+  const period = Math.PI*2;
+  for(let k=0;k<N;k++){
+    f.t = period*k/N;
+    f._draw();
+    frames.push(ctx.getImageData(0,0,W,H));
+  }
+  return frames;
+}
+
+function downloadBlob(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 5000);
+}
+
+function pad3(n){ return String(n).padStart(3,'0'); }
+
+function sheetReadme(){
+  return [
+    'Pixel Flag Studio export',
+    '=======================',
+    '',
+    'This export contains:',
+    '  flag_spritesheet.png     all animation frames in a single image',
+    '  flag_spritesheet.tres    Godot 4 SpriteFrames resource (loops at ' + fpsSlider.value + ' fps)',
+    '',
+    'Setup in Godot 4:',
+    '  1. Copy flag_spritesheet.png and flag_spritesheet.tres into your project.',
+    '  2. Godot imports the .png automatically; keep both files in the same folder.',
+    '  3. Add an AnimatedSprite2D node and assign flag_spritesheet.tres to its',
+    '     SpriteFrames property (drag it in, or Load > flag_spritesheet.tres).',
+    '  4. Play it from code:  $AnimatedSprite2D.play("flag")',
+    '',
+    'The flag frames loop seamlessly, so the animation is endless.'
+  ].join('\n');
+}
+
+function framesReadme(){
+  return [
+    'Pixel Flag Studio export',
+    '=======================',
+    '',
+    'This zip contains:',
+    '  frames/frame_000.png ...  individual PNG frames of the animation',
+    '  flag_frames.tres          Godot 4 SpriteFrames resource (loops at ' + fpsSlider.value + ' fps)',
+    '',
+    'Setup in Godot 4:',
+    '  1. Unzip this file into your project, keeping the frames/ folder.',
+    '  2. Godot imports every PNG automatically.',
+    '  3. Add an AnimatedSprite2D node and assign flag_frames.tres to its',
+    '     SpriteFrames property.',
+    '  4. Play it from code:  $AnimatedSprite2D.play("flag")',
+    '',
+    'The flag frames loop seamlessly, so the animation is endless.'
+  ].join('\n');
+}
+
+// Godot 4 SpriteFrames .tres where each frame is an AtlasTexture region.
+function buildSheetTres(cols, frameW, frameH, fps, N){
+  let s = `[gd_resource type="SpriteFrames" load_steps=${N+2} format=3]\n\n`;
+  s += `[ext_resource type="Texture2D" path="res://flag_spritesheet.png" id="1"]\n\n`;
+  const refs = [];
+  for(let k=0;k<N;k++){
+    const id = k+1;
+    s += `[sub_resource type="AtlasTexture" id="AtlasTexture_${id}"]\n`;
+    s += `atlas = ExtResource("1")\n`;
+    s += `region = Rect2(${(k%cols)*frameW}, ${Math.floor(k/cols)*frameH}, ${frameW}, ${frameH})\n\n`;
+    refs.push(`SubResource("AtlasTexture_${id}")`);
+  }
+  s += `[resource]\n`;
+  s += `animations = [{\n`;
+  s += `"frames": [${refs.join(', ')}],\n`;
+  s += `"loop": true,\n`;
+  s += `"name": &"flag",\n`;
+  s += `"speed": ${fps}.0\n`;
+  s += `}]\n`;
+  return s;
+}
+
+// Godot 4 SpriteFrames .tres referencing individual frame textures.
+function buildFramesTres(fps, N){
+  let s = `[gd_resource type="SpriteFrames" load_steps=${N+1} format=3]\n\n`;
+  const refs = [];
+  for(let k=0;k<N;k++){
+    const id = k+1;
+    s += `[ext_resource type="Texture2D" path="res://frames/frame_${pad3(k)}.png" id="${id}"]\n`;
+    refs.push(`ExtResource("${id}")`);
+  }
+  s += `\n[resource]\n`;
+  s += `animations = [{\n`;
+  s += `"frames": [${refs.join(', ')}],\n`;
+  s += `"loop": true,\n`;
+  s += `"name": &"flag",\n`;
+  s += `"speed": ${fps}.0\n`;
+  s += `}]\n`;
+  return s;
+}
+
+async function exportSpritesheet(frames, W, H, fps, status){
+  const N = frames.length;
+  const cols = Math.ceil(Math.sqrt(N));
+  const rows = Math.ceil(N/cols);
+  const sheet = document.createElement('canvas');
+  sheet.width = cols*W; sheet.height = rows*H;
+  const sctx = sheet.getContext('2d');
+  for(let k=0;k<N;k++) sctx.putImageData(frames[k], (k%cols)*W, Math.floor(k/cols)*H);
+  const png = await new Promise(res=>sheet.toBlob(res, 'image/png'));
+  downloadBlob(png, 'flag_spritesheet.png');
+  setTimeout(()=>{
+    downloadBlob(new Blob([buildSheetTres(cols, W, H, fps, N)], {type:'text/plain'}), 'flag_spritesheet.tres');
+  }, 250);
+  setTimeout(()=>{
+    downloadBlob(new Blob([sheetReadme()], {type:'text/plain'}), 'README.txt');
+  }, 500);
+  status.textContent = 'Exported flag_spritesheet.png + .tres + README';
+}
+
+// Minimal ZIP writer (store, no compression).
+function crc32(u8){
+  let crc = 0xFFFFFFFF;
+  for(let i=0;i<u8.length;i++){
+    let c = (crc ^ u8[i]) & 0xFF;
+    for(let k=0;k<8;k++) c = (c & 1) ? (0xEDB88320 ^ (c>>>1)) : (c>>>1);
+    crc = (crc>>>8) ^ c;
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function buildZip(files){
+  const enc = new TextEncoder();
+  const local = [], central = [];
+  let offset = 0;
+  const d = new Date();
+  const modTime = (d.getHours()<<11)|(d.getMinutes()<<5)|(Math.floor(d.getSeconds()/2));
+  const modDate = ((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate();
+  for(const f of files){
+    const name = enc.encode(f.name);
+    const data = f.data;
+    const crc = crc32(data);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0,0x04034b50,true); lh.setUint16(4,20,true); lh.setUint16(6,0,true);
+    lh.setUint16(8,0,true); lh.setUint16(10,modTime,true); lh.setUint16(12,modDate,true);
+    lh.setUint32(14,crc,true); lh.setUint32(18,data.length,true); lh.setUint32(22,data.length,true);
+    lh.setUint16(26,name.length,true); lh.setUint16(28,0,true);
+    local.push(new Uint8Array(lh.buffer), name, data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0,0x02014b50,true); ch.setUint16(4,20,true); ch.setUint16(6,20,true);
+    ch.setUint16(8,0,true); ch.setUint16(10,0,true); ch.setUint16(12,modTime,true);
+    ch.setUint16(14,modDate,true);
+    ch.setUint32(16,crc,true); ch.setUint32(20,data.length,true); ch.setUint32(24,data.length,true);
+    ch.setUint16(28,name.length,true); ch.setUint16(30,0,true); ch.setUint16(32,0,true);
+    ch.setUint16(34,0,true); ch.setUint16(36,0,true); ch.setUint32(38,0,true);
+    ch.setUint32(42,offset,true);
+    central.push(new Uint8Array(ch.buffer), name);
+    offset += 30 + name.length + data.length;
+  }
+  const cdLen = central.reduce((a,u)=>a+u.length,0);
+  const eocd = new DataView(new ArrayBuffer(22));
+  eocd.setUint32(0,0x06054b50,true);
+  eocd.setUint16(4,0,true); eocd.setUint16(6,0,true);
+  eocd.setUint16(8,files.length,true); eocd.setUint16(10,files.length,true);
+  eocd.setUint32(12,cdLen,true); eocd.setUint32(16,offset,true); eocd.setUint16(20,0,true);
+  const all = local.concat(central, [new Uint8Array(eocd.buffer)]);
+  const total = all.reduce((a,u)=>a+u.length,0);
+  const out = new Uint8Array(total);
+  let p = 0;
+  for(const u of all){ out.set(u, p); p += u.length; }
+  return out;
+}
+
+async function exportFrameZip(frames, W, H, fps, status){
+  const N = frames.length;
+  const files = [];
+  for(let k=0;k<N;k++){
+    const blob = await new Promise(res=>{
+      const c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      c.getContext('2d').putImageData(frames[k], 0, 0);
+      c.toBlob(res, 'image/png');
+    });
+    files.push({name:`frames/frame_${pad3(k)}.png`, data:new Uint8Array(await blob.arrayBuffer())});
+  }
+  files.push({name:'flag_frames.tres', data:new TextEncoder().encode(buildFramesTres(fps, N))});
+  files.push({name:'README.txt', data:new TextEncoder().encode(framesReadme())});
+  const zip = buildZip(files);
+  downloadBlob(new Blob([zip], {type:'application/zip'}), 'flag_frames.zip');
+  status.textContent = 'Exported flag_frames.zip';
+}
+
+/* ---------- GIF encoder ---------- */
+// GIF89a with a global color table, transparent background support, and LZW.
+function lzwEncode(indices, minCodeSize){
+  const clearCode = 1 << minCodeSize;
+  const endCode = clearCode + 1;
+  let codeSize = minCodeSize + 1;
+  let dict = new Map();
+  let nextCode = endCode + 1;
+  const out = [];
+  let acc = 0, nbits = 0;
+  const put = (code, size)=>{
+    acc |= code << nbits;
+    nbits += size;
+    while(nbits >= 8){ out.push(acc & 0xFF); acc >>>= 8; nbits -= 8; }
+  };
+  put(clearCode, codeSize);
+  let prev = indices[0];
+  for(let i=1;i<indices.length;i++){
+    const cur = indices[i];
+    const key = (prev << 12) | cur;
+    const mapped = dict.get(key);
+    if(mapped !== undefined){
+      prev = mapped;
+    }else{
+      put(prev, codeSize);
+      if(nextCode <= 4095){
+        dict.set(key, nextCode);
+        nextCode++;
+        if(nextCode === (1 << codeSize) + 1 && codeSize < 12) codeSize++;
+      }else{
+        put(clearCode, codeSize);
+        dict = new Map();
+        nextCode = endCode + 1;
+        codeSize = minCodeSize + 1;
+      }
+      prev = cur;
+    }
+  }
+  put(prev, codeSize);
+  put(endCode, codeSize);
+  if(nbits > 0) out.push(acc & 0xFF);
+  return out;
+}
+
+function buildGif(width, height, palette, transparentIndex, indexFrames, delaysMs){
+  let maxIdx = 0;
+  for(const f of indexFrames){ for(let i=0;i<f.length;i++){ if(f[i]>maxIdx) maxIdx=f[i]; } }
+  const minCodeSize = Math.max(2, Math.ceil(Math.log2(maxIdx+1)));
+  const tableSize = 1 << minCodeSize;
+  const pal = palette.slice();
+  while(pal.length < tableSize) pal.push(0);
+  const bytes = [];
+  pushStr(bytes, 'GIF89a');
+  bytes.push(width&0xFF, (width>>8)&0xFF, height&0xFF, (height>>8)&0xFF, 0xF0|(minCodeSize-1), 0, 0);
+  for(const c of pal) bytes.push((c>>16)&255, (c>>8)&255, c&255);
+  for(let k=0;k<indexFrames.length;k++){
+    const indices = indexFrames[k];
+    const delay = Math.max(1, Math.round(delaysMs[k]/10));
+    bytes.push(0x21, 0xF9, 4, (transparentIndex!==null?0x80:0)|(2<<2),
+      delay&0xFF, (delay>>8)&0xFF, transparentIndex ?? 0, 0);
+    bytes.push(0x2C, 0,0,0,0, width&0xFF,(width>>8)&0xFF, height&0xFF,(height>>8)&0xFF, 0);
+    bytes.push(minCodeSize);
+    const lzw = lzwEncode(indices, minCodeSize);
+    for(let i=0;i<lzw.length;i+=255){
+      const chunk = lzw.slice(i, i+255);
+      bytes.push(chunk.length, ...chunk);
+    }
+    bytes.push(0);
+  }
+  bytes.push(0x3B);
+  return new Uint8Array(bytes);
+}
+
+function pushStr(arr, s){ for(let i=0;i<s.length;i++) arr.push(s.charCodeAt(i)); }
+
+// Map RGBA frames to palette indices for GIF encoding.
+function buildGifFrames(frames){
+  const seen = new Map();
+  let anyTransparent = false;
+  for(const img of frames){
+    const d = img.data;
+    for(let i=0;i<d.length;i+=4){
+      if(d[i+3] < 128){ anyTransparent = true; continue; }
+      const key = (d[i]<<16)|(d[i+1]<<8)|d[i+2];
+      seen.set(key, (seen.get(key)||0)+1);
+    }
+  }
+  let colors = Array.from(seen.keys());
+  let palette, transparentIndex = null;
+  if(colors.length + (anyTransparent?1:0) <= 255){
+    palette = [];
+    for(const c of colors) palette.push(c);
+    if(anyTransparent){ transparentIndex = 0; palette.unshift(0); }
+  }else{
+    const cube = new Map();
+    for(const c of colors){
+      const r = Math.round(((c>>16)&255)/51), g = Math.round(((c>>8)&255)/51), b = Math.round((c&255)/51);
+      cube.set((r<<16)|(g<<8)|b, ((r*51+25)<<16)|((g*51+25)<<8)|(b*51+25));
+    }
+    palette = Array.from(cube.values());
+    if(anyTransparent){ transparentIndex = 0; palette.unshift(0); }
+    if(palette.length > 255) palette = palette.slice(0, 255);
+  }
+  const lookup = new Map();
+  for(let i=0;i<palette.length;i++){ if(i !== transparentIndex) lookup.set(palette[i], i); }
+  const indexFrames = frames.map(img=>{
+    const n = img.width*img.height;
+    const ind = new Uint8Array(n);
+    const d = img.data;
+    for(let i=0;i<n;i++){
+      const o = i*4;
+      if(d[o+3] < 128){ ind[i] = transparentIndex ?? 0; continue; }
+      const key = (d[o]<<16)|(d[o+1]<<8)|d[o+2];
+      let idx = lookup.get(key);
+      if(idx === undefined){
+        let best = 0, bd = Infinity;
+        for(let j=0;j<palette.length;j++){
+          if(j === transparentIndex) continue;
+          const pc = palette[j];
+          const dr = d[o]-((pc>>16)&255), dg = d[o+1]-((pc>>8)&255), db = d[o+2]-(pc&255);
+          const dist = dr*dr+dg*dg+db*db;
+          if(dist < bd){ bd = dist; best = j; }
+        }
+        idx = best;
+      }
+      ind[i] = idx;
+    }
+    return ind;
+  });
+  return {palette, transparentIndex, indexFrames};
+}
+
+function exportGIF(frames, W, H, fps, status){
+  const {palette, transparentIndex, indexFrames} = buildGifFrames(frames);
+  const delays = frames.map(()=>Math.round(1000/fps*10)/10);
+  const gif = buildGif(W, H, palette, transparentIndex, indexFrames, delays);
+  downloadBlob(new Blob([gif], {type:'image/gif'}), 'flag_animation.gif');
+  status.textContent = 'Exported flag_animation.gif';
+}
+
+document.getElementById('exportBtn').onclick = ()=>{
+  const N = +framesSlider.value, fps = +fpsSlider.value;
+  const W = mainCanvas.width*exportState.scale, H = mainCanvas.height*exportState.scale;
+  const status = document.getElementById('exportStatus');
+  status.textContent = 'Rendering ' + N + ' frames…';
+  setTimeout(()=>{
+    try{
+      const frames = renderFrames(W, H, N);
+      if(exportState.format === 'sheet') exportSpritesheet(frames, W, H, fps, status);
+      else if(exportState.format === 'zip') exportFrameZip(frames, W, H, fps, status);
+      else exportGIF(frames, W, H, fps, status);
+    }catch(err){
+      status.textContent = 'Export failed: ' + err.message;
+    }
+  }, 30);
+};
 
 /* ---------- animation loop ---------- */
 // The animation loop updates all instantiated flags on every frame.
